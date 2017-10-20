@@ -383,7 +383,7 @@ def main():
                 linkpath = os.path.join(tmpdir, disk.target + "." + disk.format)
                 # following symlinks for --read-special is still broken :(
                 # when issue gets fixed should switch to symlinks:
-                # https://github.com/borgbackup/borg/issues/1003
+                # https://github.com/borgbackup/borg/issues/1215
                 # os.symlink(realpath, linkpath)
                 with open(linkpath, "w") as f:
                     pass  # simulate 'touch'
