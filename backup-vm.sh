@@ -6,11 +6,12 @@ if (( ${#@} == 0 )); then
     echo "usage: $0 domain [disks]"
     exit 1
 elif (( ${#@} == 1 )); then
+    DOMAIN="$1"
     DISKS_TO_BACKUP=('sda')
 else
+    DOMAIN="$1"
     readarray -t DISKS_TO_BACKUP <<<"$(tr ' ' '\n'<<<"${@:2}")"
 fi
-DOMAIN="$1"
 
 if (( $(id -u) != 0 )); then
     echo "WARNING: This script probably needs to be run as root."
@@ -96,9 +97,9 @@ echo "Saving backup as $DOMAIN-$DATE"
 # the --read-special flag tells borg to follow the symlink & read the block devices directly
 # (see https://borgbackup.readthedocs.io/en/stable/usage.html#read-special)
 
-# Export the rate-limited shell for remote backups
+# Export the rate-limited shell for remote backups (for borg >1.0 use --remote-ratelimit instead)
 # (see https://borgbackup.readthedocs.io/en/stable/faq.html#is-there-a-way-to-limit-bandwidth-with-project-name)
-export BORG_RSH="/usr/local/bin/pv-wrapper ssh"
+export BORG_RSH="pv-wrapper.sh ssh"
 borg create -v --stats --compression zlib,9 \
 "<offsite location>::$DOMAIN-$DATE" \
 /img --exclude-from iso-exclusions --read-special &
@@ -121,7 +122,7 @@ commitdisk
 # Prune the backups on the server that are older than a certain date
 echo "Pruning old backups"
 
-export BORG_RSH="/usr/local/bin/pv-wrapper ssh"
+export BORG_RSH="pv-wrapper.sh ssh"
 borg prune -v --list "<offsite location>" --prefix "$DOMAIN-" --keep-within=1m &
 unset BORG_RSH
 
