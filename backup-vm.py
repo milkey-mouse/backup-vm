@@ -430,6 +430,14 @@ def main():
                                 update = json.load(f)
                                 p.progress = update["archive"]["stats"]["original_size"] / total_size
                             except json.decoder.JSONDecodeError:
+                                # todo: buffer output and use some sort of streaming
+                                # decoder (current code could read half a json object
+                                # if the buffer gets full)
+                                pass
+                            except KeyError:
+                                # if the user enables other flags that output json with
+                                # --borg-args (such as --stats), it can read valid JSON
+                                # that doesn't include the keys it's looking for
                                 pass
                         except StopIteration:
                             p = next(p for p in _processes if p.stderr == f)
