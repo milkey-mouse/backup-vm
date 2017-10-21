@@ -96,7 +96,7 @@ class Location:
 class ArgumentParser:
 
     def __init__(self, args):
-        self.prog = args[0] if len(args) > 0 else "backup-vm"
+        self.prog = os.path.basename(args[0]) if len(args) > 0 else "backup-vm"
         self.domain = None
         self.memory = False
         self.disks = set()
