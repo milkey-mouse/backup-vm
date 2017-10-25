@@ -38,8 +38,8 @@ A script for automatic restoration is [in development](https://github.com/milkey
 
 ## Usage
 
-    usage: ./backup-vm.py [-h] [-m] domain [disk [disk ...]]
-        archive [--borg-args ...] [archive [--borg-args ...] ...]
+    usage: backup-vm.py [-hmp] domain [disk [disk ...]] archive
+        [--borg-args ...] [archive [--borg-args ...] ...]
 
     Back up a libvirt-based VM using borg.
 
@@ -51,4 +51,5 @@ A script for automatic restoration is [in development](https://github.com/milkey
     optional arguments:
     -h, --help       show this help message and exit
     -m, --memory     (experimental) snapshot the memory state as well
+    -p, --progress   force progress display even if stdout isn't a tty
     --borg-args ...  extra arguments passed straight to borg

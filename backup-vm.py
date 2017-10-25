@@ -99,6 +99,7 @@ class ArgumentParser:
         self.prog = os.path.basename(args[0]) if len(args) > 0 else "backup-vm"
         self.domain = None
         self.memory = False
+        self.progress = sys.stdout.isatty()
         self.disks = set()
         self.archives = []
         self.parse_args(args)
@@ -131,6 +132,18 @@ class ArgumentParser:
                 self.archives[-1].append(arg)
             elif arg in {"-m", "--memory"}:
                 self.memory = True
+            elif arg in {"-p", "--progress"}:
+                self.progress = True
+            elif arg.startswith("-"):
+                # handle multiple flags in one arg (e.g. -hmp)
+                for c in arg[1:]:
+                    if c == "h":
+                        self.help()
+                        sys.exit()
+                    elif c == "m":
+                        self.memory = True
+                    elif c == "p":
+                        self.progress = True
             elif self.domain is None:
                 self.domain = arg
             else:
@@ -146,8 +159,8 @@ class ArgumentParser:
 
     def help(self, short=False):
         print(dedent("""
-            usage: {} [-h] [-m] domain [disk [disk ...]]
-                archive [--borg-args ...] [archive [--borg-args ...] ...]
+            usage: {} [-hmp] domain [disk [disk ...]] archive
+                [--borg-args ...] [archive [--borg-args ...] ...]
         """.format(self.prog).lstrip("\n")))
         if not short:
             print(dedent("""
@@ -161,6 +174,7 @@ class ArgumentParser:
             optional arguments:
               -h, --help       show this help message and exit
               -m, --memory     (experimental) snapshot the memory state as well
+              -p, --progress   force progress display even if stdout isn't a tty
               --borg-args ...  extra arguments passed straight to borg
             """).strip("\n"))
 
@@ -187,10 +201,11 @@ class Disk:
 
 class Snapshot:
 
-    def __init__(self, dom, disks, memory=None):
+    def __init__(self, dom, disks, memory=None, progress=True):
         self.dom = dom
         self.disks = disks
         self.memory = memory
+        self.progress = progress
         self.snapshotted = False
         self._do_snapshot()
 
@@ -265,9 +280,10 @@ class Snapshot:
                     while True:
                         info = self.dom.blockJobInfo(disk.target, 0)
                         if info is not None:
-                            progress = (idx + info["cur"] / info["end"]) / len(disks_to_backup)
-                            print("block commit progress ({}): {}%".format(
-                                disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
+                            if self.progress:
+                                progress = (idx + info["cur"] / info["end"]) / len(disks_to_backup)
+                                print("block commit progress ({}): {}%".format(
+                                    disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
                         else:
                             print("Failed to query block jobs for disk '{}'".format(
                                 disk.target).ljust(65), file=sys.stderr)
@@ -277,7 +293,8 @@ class Snapshot:
                             break
                         sleep(0.5)
                 finally:
-                    print("...pivoting...".ljust(65), end="\u001b[65D")
+                    if self.progress:
+                        print("...pivoting...".ljust(65), end="\u001b[65D")
                     if self.dom.blockJobAbort(disk.target, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT) < 0:
                         print("Pivot failed for disk '{}', it may be in an inconsistent state".format(
                             disk.target).ljust(65), file=sys.stderr)
@@ -288,7 +305,10 @@ class Snapshot:
             # the domain is offline, use qemu-img for offline commit instead.
             # libvirt doesn't support external snapshots as well as internal,
             # hence this workaround
-            print("image commit progress: 0%".ljust(65), end="\u001b[65D")
+            if self.progress:
+                print("image commit progress: 0%".ljust(65), end="\u001b[65D")
+            else:
+                print("committing disk images")
             for idx, disk in enumerate(disks_to_backup):
                 try:
                     subprocess.run(["qemu-img", "commit", disk.snapshot_path], stdout=subprocess.DEVNULL, check=True)
@@ -303,9 +323,10 @@ class Snapshot:
                         disk.failed = True
                         continue
                     os.remove(disk.snapshot_path)
-                    progress = (idx + 1) / len(disks_to_backup)
-                    print("image commit progress ({}): {}%".format(
-                        disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
+                    if self.progress:
+                        progress = (idx + 1) / len(disks_to_backup)
+                        print("image commit progress ({}): {}%".format(
+                            disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
                 except FileNotFoundError:
                     # not very likely as the qemu-img tool is normally installed
                     # along with the libvirt/virsh stuff
@@ -315,7 +336,8 @@ class Snapshot:
                 except subprocess.CalledProcessError:
                     print("Commit failed for disk '{}'".format(disk.target).ljust(65))
                     disk.failed = True
-            print()
+            if self.progress:
+                print()
         return False
 
 
@@ -372,7 +394,7 @@ def main():
         memory = os.path.join(tmpdir, "memory.bin")
     else:
         memory = None
-    with TemporaryDirectory() as tmpdir, Snapshot(dom, disks, memory):
+    with TemporaryDirectory() as tmpdir, Snapshot(dom, disks, memory, args.progress):
         total_size = 0
         for disk in disks:
             if disk.target in args.disks:
@@ -390,17 +412,15 @@ def main():
                 subprocess.run(["mount", "--bind", realpath, linkpath], check=True)
 
         try:
-            if sys.stdout.isatty():
+            check_progress = False
+            if args.progress:
                 # borg <1.1 doesn't support --json for the progress bar
                 version_bytes = subprocess.run(["borg", "--version"], stdout=subprocess.PIPE, check=True).stdout
                 borg_version = [*map(int, version_bytes.decode("utf-8").split(" ")[1].split("."))]
                 if borg_version[0] < 1 or borg_version[1] < 1:
                     print("You are using an old version of borg, progress indication is disabled", file=sys.stderr)
-                    check_progress = False
                 else:
                     check_progress = True
-            else:
-                check_progress = False
 
             os.chdir(tmpdir)
             borg_processes = []
