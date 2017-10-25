@@ -55,3 +55,7 @@ A script for automatic restoration is [in development](https://github.com/milkey
     -m, --memory     (experimental) snapshot the memory state as well
     -p, --progress   force progress display even if stdout isn't a tty
     --borg-args ...  extra arguments passed straight to borg
+
+## Installation
+
+Python ≥3.4 is required, as well as the Python libvirt bindings. If possible, install them from the system package manager (`apt install python3-libvirt`); otherwise, use pip (`pip install libvirt-python`). To install the script, copy it into `/usr/local/bin` and optionally remove the `.py` extension.
