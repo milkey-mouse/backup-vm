@@ -30,10 +30,11 @@ class Location:
                         r"""(?P<host>([^:/]+|\[[0-9a-fA-F:.]+\])):)?""" + scp_path_re + optional_archive_re, re.VERBOSE)
     env_re = re.compile(r"""(?:::$)|""" + optional_archive_re, re.VERBOSE)
 
-    def __init__(self, text=''):
+    def __init__(self, text=""):
         self.orig = text
+        self.extra_args = []
         if not self.parse(self.orig):
-            raise ValueError('Location: parse failed: %s' % self.orig)
+            raise ValueError("Location: parse failed: %s" % self.orig)
 
     def parse(self, text):
         # text = replace_placeholders(text)
@@ -43,54 +44,83 @@ class Location:
         m = self.env_re.match(text)
         if not m:
             return False
-        repo = os.environ.get('BORG_REPO')
+        repo = os.environ.get("BORG_REPO")
         if repo is None:
             return False
         valid = self._parse(repo)
         if not valid:
             return False
-        self.archives = m.group('archive')
+        self.archive = m.group("archive")
         return True
 
     def _parse(self, text):
         def normpath_special(p):
             # avoid that normpath strips away our relative path hack and even makes p absolute
-            relative = p.startswith('/./')
+            relative = p.startswith("/./")
             p = os.path.normpath(p)
-            return ('/.' + p) if relative else p
+            return ("/." + p) if relative else p
 
         m = self.ssh_re.match(text)
         if m:
-            self.proto = m.group('proto')
-            self.user = m.group('user')
-            self._host = m.group('host')
-            self.port = m.group('port') and int(m.group('port')) or None
-            self.path = normpath_special(m.group('path'))
-            self.archives = m.group('archive')
+            self.proto = m.group("proto")
+            self.user = m.group("user")
+            self._host = m.group("host")
+            self.port = m.group("port") and int(m.group("port")) or None
+            self.path = normpath_special(m.group("path"))
+            self.archive = m.group("archive")
             return True
         m = self.file_re.match(text)
         if m:
-            self.proto = m.group('proto')
-            self.path = normpath_special(m.group('path'))
-            self.archives = m.group('archive')
+            self.proto = m.group("proto")
+            self.path = normpath_special(m.group("path"))
+            self.archive = m.group("archive")
             return True
         m = self.scp_re.match(text)
         if m:
-            self.user = m.group('user')
-            self._host = m.group('host')
-            self.path = normpath_special(m.group('path'))
-            self.archives = m.group('archive')
-            self.proto = self._host and 'ssh' or 'file'
+            self.user = m.group("user")
+            self._host = m.group("host")
+            self.path = normpath_special(m.group("path"))
+            self.archive = m.group("archive")
+            self.proto = self._host and "ssh" or "file"
             return True
         return False
 
     @classmethod
-    def is_location(cls, text):
+    def try_location(cls, text):
         try:
-            loc = Location(text)
+            return Location(text)
         except ValueError:
-            return False
-        return loc.path is not None and loc.archives is not None and (loc.proto == "file" or loc._host is not None)
+            return None
+        return loc.path is not None and loc.archive is not None and (loc.proto == "file" or loc._host is not None)
+
+    def canonicalize_path(self, cwd=None):
+        if self.proto == "ssh" or os.path.isabs(self.path):
+            return
+        if cwd is None:
+            cwd = os.getcwd()
+        self.path = os.path.normpath(os.path.join(cwd, self.path))
+
+    def __str__(self):
+        # http://borgbackup.readthedocs.io/en/stable/usage/general.html#repository-urls
+        # re-creation needs to be done dynamically instead of returning self.orig because
+        # we change values to make paths absolute, etc.
+        if self.proto == "file":
+            repo = self.path
+        elif self.proto == "ssh":
+            _user = self.user + "@" if self.user is not None else ""
+            if self.port is not None:
+                # URI form needs "./" prepended to relative dirs
+                _path = os.path.join(".", self.path) if not os.path.isabs(self.path) else self.path
+                repo = "ssh://{}{}:{}/{}".format(_user, self._host, self.port, _path)
+            else:
+                repo = "{}{}:{}".format(_user, self._host, self.path)
+        if self.archive is not None:
+            return repo + "::" + self.archive
+        else:
+            return repo
+
+    def __hash__(self):
+        return hash(str(self))
 
 
 class ArgumentParser:
@@ -113,23 +143,18 @@ class ArgumentParser:
             if arg in {"-h", "--help"}:
                 self.help()
                 sys.exit()
-            elif Location.is_location(arg):
+            l = Location.try_location(arg)
+            if [l, l.path, l.archive].count(None) == 0 and (l.proto == "file" or l._host is not None):
                 parsing_borg_args = False
-                if Location(arg).proto == "file":
-                    # make relative archive paths absolute beacuse we
-                    # will change directories before starting borg
-                    parts = arg.split(":")
-                    parts[0] = os.path.abspath(parts[0])
-                    self.archives.append([":".join(parts)])
-                else:
-                    self.archives.append([arg])
+                l.canonicalize_path()
+                self.archives.append(l)
             elif arg == "--borg-args":
                 if len(self.archives) == 0:
                     self.error("--borg-args must come after an archive path")
                 else:
                     parsing_borg_args = True
             elif parsing_borg_args:
-                self.archives[-1].append(arg)
+                self.archives[-1].extra_args.append(arg)
             elif arg in {"-m", "--memory"}:
                 self.memory = True
             elif arg in {"-p", "--progress"}:
@@ -424,16 +449,16 @@ def main():
 
             os.chdir(tmpdir)
             borg_processes = []
-            for idx, _archive in enumerate(args.archives):
-                archive, *extra_args = _archive
+            for idx, archive in enumerate(args.archives):
                 if check_progress:
-                    proc = subprocess.Popen(["borg", "create", archive, ".", "--read-special", "--progress",
-                                             "--json", *extra_args], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    proc = subprocess.Popen(["borg", "create", str(archive), ".", "--read-special", "--progress",
+                                             "--json", *archive.extra_args], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     proc.stdout = codecs.getreader("utf-8")(proc.stdout)
                     proc.stderr = codecs.getreader("utf-8")(proc.stderr)
                     proc.ignore_stderr = False
                 else:
-                    proc = subprocess.Popen(["borg", "create", archive, ".", "--read-special", *args.borg_args])
+                    proc = subprocess.Popen(["borg", "create", str(archive), ".",
+                                             "--read-special", *archive.extra_args])
                 proc.progress = 0
                 borg_processes.append(proc)
 
