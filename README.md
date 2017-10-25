@@ -14,6 +14,8 @@ Back up your libvirt-based VMs using [`borg`](https://github.com/borgbackup/borg
     - Supports disk images backed by a file or a block device
 - Can back up to multiple Borg repositories at once
     - Only one snapshot operation needed for multiple backups
+    - Auto-answers subsequent prompts from other borg processes
+    - Shows total backup progress % (even with multiple backups)
 - Pass extra arguments straight to Borg on the command line
     - Different settings (e.g. compression) can be passed to each instance
 

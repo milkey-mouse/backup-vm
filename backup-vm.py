@@ -2,14 +2,15 @@
 
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
-from itertools import chain
 from base64 import b64encode
 from textwrap import dedent
-from select import select
 from getpass import getpass
+from pty import openpty
 from time import sleep
 import subprocess
-import codecs
+import selectors
+import termios
+import fcntl
 import json
 import sys
 import os
@@ -373,6 +374,61 @@ def error_handler(ctx, err):
         print("libvirt: error code {}: {}".format(err[0], err[2]), file=sys.stderr)
 
 
+def log(p, msg, end="\n"):
+    if isinstance(p, subprocess.Popen):
+        name = p.archive.orig
+    elif isinstance(p, Location):
+        name = p.orig
+    else:
+        name = p
+    for l in msg[:-1]:
+        print("[{}] {}".format(name, l), file=sys.stderr)
+    print("[{}] {}".format(name, msg[-1]), file=sys.stderr, end=end)
+
+
+prompt_answers = {}
+
+
+def process_line(p, line, total_size):
+    global prompt_answers
+    if len(p.json_buf) > 0 or line.startswith("{"):
+        p.json_buf.append(line)
+    if len(p.json_buf) > 0 and line.endswith("}"):
+        try:
+            msg = json.loads("\n".join(p.json_buf))
+            p.json_buf = []
+            if msg["type"] == "archive_progress":
+                p.progress = msg["original_size"] / total_size
+            elif msg["type"] == "log_message":
+                log(p, msg["message"].split("\n"))
+            elif msg["type"].startswith("question"):
+                if "msgid" in msg:
+                    prompt_id = msg["msgid"]
+                elif "message" in msg:
+                    prompt_id = msg["message"]
+                else:
+                    raise ValueError("No msgid or message for prompt")
+                if msg.get("is_prompt", False) or msg["type"].startswith("question_prompt"):
+                    if prompt_id not in prompt_answers:
+                        log(p, msg["message"].split("\n"), end="")
+                        prompt_answers[prompt_id] = input()
+                    print(prompt_answers[prompt_id], file=p.stdin, flush=True)
+                elif not msg["type"].startswith("question_accepted"):
+                    log(p, msg["message"].split("\n"))
+        except json.decoder.JSONDecodeError:
+            log(p, p.json_buf)
+            p.json_buf = []
+    elif line.startswith("Enter passphrase for key "):
+        log(p, [line], end="")
+        passphrase = getpass("")
+        print(passphrase, file=p.stdin, flush=True)
+        print("", file=sys.stderr)
+    elif line != "":
+        # line is not json?
+        log(p, [line])
+    # TODO: process password here for efficiency & simplicity
+
+
 def main():
     args = ArgumentParser(sys.argv)
 
@@ -462,82 +518,75 @@ def main():
                 subprocess.run(["mount", "--bind", realpath, linkpath], check=True)
 
         try:
-            check_progress = False
-            if args.progress:
-                # borg <1.1 doesn't support --json for the progress bar
-                version_bytes = subprocess.run(["borg", "--version"], stdout=subprocess.PIPE, check=True).stdout
-                borg_version = [*map(int, version_bytes.decode("utf-8").split(" ")[1].split("."))]
-                if borg_version[0] < 1 or borg_version[1] < 1:
-                    print("You are using an old version of borg, progress indication is disabled", file=sys.stderr)
-                else:
-                    check_progress = True
+            # borg <1.1 doesn't support --log-json for the progress display
+            version_bytes = subprocess.run(["borg", "--version"], stdout=subprocess.PIPE, check=True).stdout
+            borg_version = [*map(int, version_bytes.decode("utf-8").split(" ")[1].split("."))]
+            if borg_version[0] < 1 or borg_version[1] < 1:
+                print("You are using an old version of borg, progress indication is disabled", file=sys.stderr)
+                old_borg = True
+                args.progress = False
+            else:
+                old_borg = False
 
             os.chdir(tmpdir)
             borg_processes = []
-            for idx, archive in enumerate(args.archives):
-                env = os.environ.copy()
-                passphrase = passphrases.get(archive, os.environ.get("BORG_PASSPHRASE"))
-                if passphrase is not None:
-                    env["BORG_PASSPHRASE"] = passphrase
-                if check_progress:
-                    proc = subprocess.Popen(["borg", "create", str(archive), ".", "--read-special", "--progress",
-                                             "--json", *archive.extra_args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-                    proc.stdout = codecs.getreader("utf-8")(proc.stdout)
-                    proc.stderr = codecs.getreader("utf-8")(proc.stderr)
-                    proc.ignore_stderr = False
-                else:
-                    proc = subprocess.Popen(["borg", "create", str(archive), ".",
-                                             "--read-special", *archive.extra_args], env=env)
-                proc.progress = 0
-                borg_processes.append(proc)
+            try:
+                with selectors.DefaultSelector() as sel:
+                    for idx, archive in enumerate(args.archives):
+                        if args.progress:
+                            archive.extra_args.append("--progress")
+                        if not old_borg:
+                            archive.extra_args.append("--log-json")
+                        env = os.environ.copy()
+                        passphrase = passphrases.get(archive, os.environ.get("BORG_PASSPHRASE"))
+                        if passphrase is not None:
+                            env["BORG_PASSPHRASE"] = passphrase
+                        master, slave = openpty()
+                        settings = termios.tcgetattr(master)
+                        settings[3] &= ~termios.ECHO
+                        termios.tcsetattr(master, termios.TCSADRAIN, settings)
+                        proc = subprocess.Popen(["borg", "create", str(archive), ".", "--read-special", *archive.extra_args],
+                                                stdout=slave, stderr=slave, stdin=slave, close_fds=True, env=env, start_new_session=True)
+                        fl = fcntl.fcntl(master, fcntl.F_GETFL)
+                        fcntl.fcntl(master, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+                        proc.stdin = os.fdopen(master, "w")
+                        proc.stdout = os.fdopen(master, "r")
+                        proc.archive = archive
+                        proc.json_buf = []
+                        proc.progress = 0
+                        borg_processes.append(proc)
+                        sel.register(proc.stdout, selectors.EVENT_READ, data=proc)
 
-            borg_failed = False
-            if check_progress:
-                print("backup progress: 0%".ljust(25), end="\u001b[25D")
-                _processes = borg_processes[:]
-                while _processes:
-                    rlist = select([*chain.from_iterable((p.stdout, p.stderr) for p in _processes)], [], [])[0]
-                    for f in rlist:
-                        try:
-                            p = next(p for p in _processes if p.stdout == f)
-                            try:
-                                update = json.load(f)
-                                p.progress = update["archive"]["stats"]["original_size"] / total_size
-                            except json.decoder.JSONDecodeError:
-                                # todo: buffer output and use some sort of streaming
-                                # decoder (current code could read half a json object
-                                # if the buffer gets full)
-                                pass
-                            except KeyError:
-                                # if the user enables other flags that output json with
-                                # --borg-args (such as --stats), it can read valid JSON
-                                # that doesn't include the keys it's looking for
-                                pass
-                        except StopIteration:
-                            p = next(p for p in _processes if p.stderr == f)
-                            line = f.readline().rstrip("\n")
-                            if line.startswith("0 B O 0 B C 0 B D 0 N"):
-                                # "magic string" of first progress update: if
-                                # we've made it this far we haven't errored out
-                                # on something trivial like an invalid repo name
-                                p.ignore_stderr = True
-                            elif not p.ignore_stderr or p.poll() is not None:
-                                print(line, file=sys.stderr)
-
-                    for p in _processes[:]:
-                        if p.poll() is not None:
-                            p.stdout.read()
-                            p.stdout.close()
-                            if p.returncode != 0:
-                                borg_failed = True
-                            _processes.remove(p)
-
-                    progress = int(sum(p.progress for p in borg_processes) / len(borg_processes) * 100)
-                    print("backup progress: {}%".format(progress).ljust(25), end="\u001b[25D")
-                print()
-            else:
+                    borg_failed = False
+                    if args.progress:
+                        print("backup progress: 0%".ljust(25), end="\u001b[25D", flush=True)
+                    else:
+                        # give the user some feedback so the program doesn't look frozen
+                        print("starting backup", flush=True)
+                    while len(sel.get_map()) > 0:
+                        for key, mask in sel.select(1):
+                            for line in iter(key.fileobj.readline, ""):
+                                process_line(key.data, line.rstrip("\n"), total_size)
+                        for key in [*sel.get_map().values()]:
+                            if key.data.poll() is not None:
+                                key.data.wait()
+                                key.data.progress = 1
+                                if key.data.returncode != 0:
+                                    borg_failed = True
+                                sel.unregister(key.fileobj)
+                        if args.progress:
+                            progress = int(sum(p.progress for p in borg_processes) / len(borg_processes) * 100)
+                            print("backup progress: {}%".format(progress).ljust(25), end="\u001b[25D")
+                    if args.progress:
+                        print()
+            finally:
                 for p in borg_processes:
-                    p.wait()
+                    if p.poll() is not None:
+                        p.kill()
+                        try:
+                            p.communicate()
+                        except (ValueError, OSError):
+                            p.wait()
         finally:
             for disk in disks:
                 if disk.target in args.disks:
