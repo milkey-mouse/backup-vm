@@ -3,8 +3,10 @@
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
 from itertools import chain
+from base64 import b64encode
 from textwrap import dedent
 from select import select
+from getpass import getpass
 from time import sleep
 import subprocess
 import codecs
@@ -419,6 +421,29 @@ def main():
         memory = os.path.join(tmpdir, "memory.bin")
     else:
         memory = None
+
+    passphrases = {}
+    if sys.stdout.isatty():
+        for archive in args.archives:
+            repo = str(archive).split("::")[0]
+            # check if we need a password as recommended by the docs:
+            # https://borgbackup.readthedocs.io/en/stable/internals/frontends.html#passphrase-prompts
+            env = os.environ.copy()
+            if len({"BORG_PASSPHRASE", "BORG_PASSCOMMAND", "BORG_NEWPASSPHRASE"} - set(env)) == 3:
+                env["BORG_PASSPHRASE"] = b64encode(os.urandom(16)).decode("utf-8")
+            with subprocess.Popen(["borg", "list", repo], stdin=subprocess.PIPE,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env) as proc:
+                proc.stdin.close()  # manually close stdin instead of /dev/null so it knows it won't get input
+                proc.stdin = None
+                err = proc.communicate(input)[1].decode("utf-8").rstrip("\n").split("\n")
+                if proc.poll() != 0:
+                    # exact error message changes between borg versions
+                    if err[-1].startswith("passphrase supplied") and err[-1].endswith("is incorrect."):
+                        passphrases[archive] = getpass("Enter passphrase for key {}: ".format(repo.split(":")[0]))
+                    else:
+                        # the error will re-manifest later (with better I/O formatting), so just ignore it
+                        pass
+
     with TemporaryDirectory() as tmpdir, Snapshot(dom, disks, memory, args.progress):
         total_size = 0
         for disk in disks:
@@ -450,15 +475,19 @@ def main():
             os.chdir(tmpdir)
             borg_processes = []
             for idx, archive in enumerate(args.archives):
+                env = os.environ.copy()
+                passphrase = passphrases.get(archive, os.environ.get("BORG_PASSPHRASE"))
+                if passphrase is not None:
+                    env["BORG_PASSPHRASE"] = passphrase
                 if check_progress:
                     proc = subprocess.Popen(["borg", "create", str(archive), ".", "--read-special", "--progress",
-                                             "--json", *archive.extra_args], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                             "--json", *archive.extra_args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
                     proc.stdout = codecs.getreader("utf-8")(proc.stdout)
                     proc.stderr = codecs.getreader("utf-8")(proc.stderr)
                     proc.ignore_stderr = False
                 else:
                     proc = subprocess.Popen(["borg", "create", str(archive), ".",
-                                             "--read-special", *archive.extra_args])
+                                             "--read-special", *archive.extra_args], env=env)
                 proc.progress = 0
                 borg_processes.append(proc)
 
