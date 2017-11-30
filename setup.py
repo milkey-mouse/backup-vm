@@ -34,7 +34,7 @@ setup(name="backup-vm",
       entry_points={
           "console_scripts": [
               "backup-vm=backup_vm.backup:main",
-              #"borg-multi=backup_vm.multi:main",
+              "borg-multi=backup_vm.multi:main",
           ],
       },
       include_package_data=True,

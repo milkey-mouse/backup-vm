@@ -10,7 +10,7 @@ from . import snapshot
 
 
 def main():
-    args = parse.ArgumentParser(sys.argv)
+    args = parse.BVMArgumentParser()
     conn = libvirt.open()
     if conn is None:
         print("Failed to open connection to libvirt", file=sys.stderr)
@@ -48,6 +48,9 @@ def main():
             disk.snapshot_path = os.path.join("/var/lib/libvirt/images", filename)
         else:
             disk.snapshot_path = os.path.join(os.path.dirname(disk.path), filename)
+
+    for archive in args.archives:
+        archive.extra_args.append("--read-special")
 
     memory = os.path.join(tmpdir, "memory.bin") if args.memory else None
     with snapshot.Snapshot(dom, all_disks, memory, args.progress), \

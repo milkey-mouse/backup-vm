@@ -11,6 +11,7 @@ import json
 import sys
 import pty
 import os
+from . import parse
 
 
 def get_passphrases(archives):
@@ -141,7 +142,7 @@ def get_borg_version():
     return LooseVersion(version_bytes.decode("utf-8").split(" ")[1])
 
 
-def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None):
+def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None, verb="create"):
     """
     Run and manage multiple `borg create` commands.
 
@@ -157,6 +158,11 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None):
     Returns:
         A boolean indicating if any borg processes failed (True = failed).
     """
+
+    if dir_to_archive is None:
+        dir_to_archive = []
+    else:
+        dir_to_archive = [dir_to_archive]
 
     if passphrases is None and sys.stdout.isatty():
         passphrases = get_passphrases(archives)
@@ -187,8 +193,8 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None):
                 settings = termios.tcgetattr(master)
                 settings[3] &= ~termios.ECHO
                 termios.tcsetattr(master, termios.TCSADRAIN, settings)
-                proc = subprocess.Popen(["borg", "create", str(archive), dir_to_archive, "--read-special", *archive.extra_args],
-                                        stdout=slave, stderr=slave, stdin=slave, close_fds=True, env=env, start_new_session=True)
+                proc = subprocess.Popen(["borg", verb, str(archive), *dir_to_archive, *archive.extra_args], env=env,
+                                        stdout=slave, stderr=slave, stdin=slave, close_fds=True, start_new_session=True)
                 fl = fcntl.fcntl(master, fcntl.F_GETFL)
                 fcntl.fcntl(master, fcntl.F_SETFL, fl | os.O_NONBLOCK)
                 proc.stdin = os.fdopen(master, "w")
@@ -233,4 +239,9 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None):
 
 
 def main():
-    pass
+    args = parse.MultiArgumentParser()
+    if args.command != "create" and "--path" not in sys.argv[1:]:
+        # path needs to be explicitly specified to be included in command
+        # if the verb is not the default
+        args.dir = None
+    return assimilate(args.archives, dir_to_archive=args.dir, verb=args.command)

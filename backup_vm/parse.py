@@ -186,6 +186,7 @@ class Disk:
         yield from {d for d in map(cls, tree.findall("devices/disk")) if d.type is not None}
 
 
+# TODO: reimplement this mess with getopt (argparse doesn't support --borg-args stuff)
 class ArgumentParser(metaclass=ABCMeta):
 
     """Base class for backup-vm parsers.
@@ -194,16 +195,22 @@ class ArgumentParser(metaclass=ABCMeta):
     --borg-args, multiple archive locations, etc.).
     """
 
-    def __init__(self, args=sys.argv, default_name="backup-vm"):
+    def __init__(self, default_name, args=sys.argv):
         self.prog = os.path.basename(args[0]) if len(args) > 0 else default_name
-        self.domain = None
-        self.memory = False
         self.progress = sys.stdout.isatty()
         self.disks = set()
         self.archives = []
         self.parse_args(args[1:])
 
     def parse_arg(self, arg):
+        """Parses a single argument.
+
+        Args:
+            arg: A string representing a single argument.
+
+        Returns:
+            True if the argument was processed, False if it was not recognized
+        """
         # TODO: add --version
         if arg in {"-h", "--help"}:
             self.help()
@@ -221,34 +228,135 @@ class ArgumentParser(metaclass=ABCMeta):
                 self.parsing_borg_args = True
         elif self.parsing_borg_args:
             self.archives[-1].extra_args.append(arg)
-        elif arg in {"-m", "--memory"}:
-            self.memory = True
         elif arg in {"-p", "--progress"}:
             self.progress = True
-        elif self.domain is None:
-            self.domain = arg
         else:
-            self.disks.add(arg)
+            return False
+        return True
 
     def parse_args(self, args):
-        if len(args) == 1:
+        if len(args) == 0:
             self.help()
             sys.exit(2)
         self.parsing_borg_args = False
         for arg in args:
             if arg.startswith("-") and not arg.startswith("--"):
                 for c in arg[1:]:
-                    self.parse_arg("-" + c)
+                    if not self.parse_arg("-" + c):
+                        self.error("unrecognized argument: '-{}'".format(c))
             else:
-                self.parse_arg(arg)
-        if self.domain is None or len(self.archives) == 0:
-            self.error("the following arguments are required: domain, archive")
-            sys.exit(2)
+                if not self.parse_arg(arg):
+                    self.error("unrecognized argument: '{}'".format(arg))
+        if len(self.archives) == 0:
+            self.error("at least one archive path is required")
 
     def error(self, msg):
-        self.help(True)
+        self.help(short=True)
         print(self.prog + ": error: " + msg, file=sys.stderr)
         sys.exit(2)
+
+    @abstractmethod
+    def help(self, short=False):
+        pass
+
+
+class MultiArgumentParser(ArgumentParser):
+
+    """Argument parser for borg-multi.
+
+    Parses common arguments (--borg-args, multiple archive locations, etc.) as
+    well as those of borg-multi (--borg-cmd).
+    """
+
+    def __init__(self, default_name="borg-multi", args=sys.argv):
+        self.command = "create"
+        self.dir = "."
+        super().__init__(default_name, args)
+
+    def parse_arg(self, arg):
+        if self.command is None:
+            self.command = arg
+        elif self.dir is None:
+            self.dir = arg
+        elif super().parse_arg(arg):
+            return True
+        elif arg in {"-c", "--borg-cmd"}:
+            self.command = None
+        elif arg.startswith("-c"):
+            self.command = arg[2:]
+        elif arg.startswith("--borg-cmd="):
+            try:
+                self.command = arg.split("=")[1]
+            except IndexError:
+                self.command = None
+        elif arg in {"-l", "--path"}:
+            self.dir = None
+        elif arg.startswith("-l"):
+            self.dir = arg[2:]
+        elif arg.startswith("--path="):
+            try:
+                self.dir = arg.split("=")[1]
+            except IndexError:
+                self.dir = None
+        else:
+            return False
+        return True
+
+    def parse_args(self, args):
+        super().parse_args(args)
+        if self.command is None:
+            self.error("--borg-args must precede a borg subcommand")
+        elif len(self.archives) == 0:
+            self.error("the following arguments are required: archive")
+
+    def help(self, short=False):
+        print(dedent("""
+            usage: {} [-hp] [--path PATH] [--borg-cmd SUBCOMMAND]
+                archive [--borg-args ...] [archive [--borg-args ...] ...]
+        """.format(self.prog).lstrip("\n")))
+        if not short:
+            print(dedent("""
+            Batch multiple borg commands into one.
+
+            positional arguments:
+              archive          a borg archive path (same format as borg create)
+
+            optional arguments:
+              -h, --help       show this help message and exit
+              -l, --path       path for borg to archive (default: .)
+              -p, --progress   force progress display even if stdout isn't a tty
+              -c, --borg-cmd   alternate borg subcommand to run (default: create)
+              --borg-args ...  extra arguments passed straight to borg
+            """).strip("\n"))
+
+
+class BVMArgumentParser(ArgumentParser):
+
+    """Argument parser for backup-vm.
+
+    Parses common arguments (--borg-args, multiple archive locations, etc.) as
+    well as those of backup-vm (domain, memory).
+    """
+
+    def __init__(self, default_name="backup-vm", args=sys.argv):
+        self.domain = None
+        self.memory = False
+        super().__init__(default_name, args)
+
+    def parse_arg(self, arg):
+        if not super().parse_arg(arg):
+            if arg in {"-m", "--memory"}:
+                self.memory = True
+            elif self.domain is None:
+                self.domain = arg
+            else:
+                self.disks.add(arg)
+        return True
+
+    def parse_args(self, args):
+        super().parse_args(args)
+        if self.domain is None or len(self.archives) == 0:
+            self.error("the following arguments are required: domain, archive")
 
     def help(self, short=False):
         print(dedent("""
