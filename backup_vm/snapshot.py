@@ -81,39 +81,47 @@ class Snapshot:
 
     def blockcommit(self, disks):
         for idx, disk in enumerate(disks):
-            if self.dom.blockCommit(
-                disk.target, None, None,
-                flags=libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE
-                    | libvirt.VIR_DOMAIN_BLOCK_COMMIT_SHALLOW) < 0:
-                print("Failed to start block commit for disk '{}'".format(
-                    disk.target).ljust(65), file=sys.stderr)
-                disk.failed = True
-            try:
-                while True:
-                    info = self.dom.blockJobInfo(disk.target, 0)
-                    if info is not None and self.progress:
-                        progress = (idx + info["cur"] / info["end"]) / len(disks)
-                        print("block commit progress ({}): {}%".format(
-                            disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
-                    elif info is None:
-                        print("Failed to query block jobs for disk '{}'".format(
-                            disk.target).ljust(65), file=sys.stderr)
-                        disk.failed = True
-                        break
-                    if info["cur"] == info["end"]:
-                        break
-                    time.sleep(1)
-            finally:
-                if self.progress:
-                    print("...pivoting...".ljust(65), end="\u001b[65D")
-                if self.dom.blockJobAbort(
-                        disk.target,
-                        libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT) < 0:
-                    print("Pivot failed for disk '{}', it may be in an inconsistent state".format(
+            for commit_try in range(3):
+                disk.failed = False
+                if self.dom.blockCommit(
+                    disk.target, None, None,
+                    flags=libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE
+                        | libvirt.VIR_DOMAIN_BLOCK_COMMIT_SHALLOW) < 0:
+                    print("Failed to start block commit for disk '{}'".format(
                         disk.target).ljust(65), file=sys.stderr)
                     disk.failed = True
-                else:
-                    os.remove(disk.snapshot_path)
+                try:
+                    while True:
+                        info = self.dom.blockJobInfo(disk.target, 0)
+                        if info is not None and self.progress:
+                            progress = (idx + info["cur"] / info["end"]) / len(disks)
+                            print("block commit progress ({}): {}%".format(
+                                disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
+                        elif info is None:
+                            print("Failed to query block jobs for disk '{}'".format(
+                                disk.target).ljust(65), file=sys.stderr)
+                            disk.failed = True
+                            break
+                        if info["cur"] == info["end"]:
+                            break
+                        time.sleep(1)
+                    if not disk.failed:
+                        break
+                finally:
+                    if self.progress:
+                        print("...pivoting...".ljust(65), end="\u001b[65D")
+                    if self.dom.blockJobAbort(disk.target, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT) < 0:
+                        suffix = "retrying..." if commit_try != 2 else "it may be in an inconsistent state"
+                        print("Pivot failed for disk '{}', {}".format(disk.target, suffix).ljust(65), file=sys.stderr)
+                        disk.failed = True
+                        time.sleep(5)
+                    else:
+                        try:
+                            os.remove(disk.snapshot_path)
+                        except PermissionError:
+                            print("Couldn't delete snapshot image '{}', please run as root".format(
+                                disk.snapshot_path).ljust(65), file=sys.stderr)
+                        break
 
     def offline_commit(self, disks):
         if self.progress:
@@ -121,34 +129,43 @@ class Snapshot:
         else:
             print("committing disk images")
         for idx, disk in enumerate(disks):
-            try:
-                subprocess.run(["qemu-img", "commit", disk.snapshot_path],
-                               stdout=subprocess.DEVNULL, check=True)
-                # restore the original image in domain definition
-                # this is done automatically when pivoting for live commit
-                new_xml = ElementTree.tostring(disk.xml).decode("utf-8")
+            for commit_try in range(3):
+                disk.failed = False
                 try:
-                    self.dom.updateDeviceFlags(new_xml)
-                except libvirt.libvirtError:
-                    print("Device flags update failed for disk '{}'".format(
-                        disk.target).ljust(65), file=sys.stderr)
-                    print("Try replacing the path manually with 'virsh edit'", file=sys.stderr)
+                    subprocess.run(["qemu-img", "commit", disk.snapshot_path],
+                                   stdout=subprocess.DEVNULL, check=True)
+                    # restore the original image in domain definition
+                    # this is done automatically when pivoting for live commit
+                    new_xml = ElementTree.tostring(disk.xml).decode("utf-8")
+                    try:
+                        self.dom.updateDeviceFlags(new_xml)
+                    except libvirt.libvirtError:
+                        print("Device flags update failed for disk '{}'".format(
+                            disk.target).ljust(65), file=sys.stderr)
+                        print("Try replacing the path manually with 'virsh edit'", file=sys.stderr)
+                        disk.failed = True
+                        continue
+                    try:
+                        os.remove(disk.snapshot_path)
+                    except PermissionError:
+                        print("Couldn't delete snapshot image '{}', please run as root".format(
+                            disk.snapshot_path).ljust(65), file=sys.stderr)
+                    if self.progress:
+                        progress = (idx + 1) / len(disks)
+                        print("image commit progress ({}): {}%".format(
+                            disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
+                    break
+                except FileNotFoundError:
+                    # not very likely as the qemu-img tool is normally installed
+                    # along with the libvirt/virsh stuff
+                    print("Install qemu-img to commit changes offline".ljust(65), file=sys.stderr)
                     disk.failed = True
-                    continue
-                os.remove(disk.snapshot_path)
-                if self.progress:
-                    progress = (idx + 1) / len(disks)
-                    print("image commit progress ({}): {}%".format(
-                        disk.target, int(100 * progress)).ljust(65), end="\u001b[65D")
-            except FileNotFoundError:
-                # not very likely as the qemu-img tool is normally installed
-                # along with the libvirt/virsh stuff
-                print("Install qemu-img to commit changes offline".ljust(65), file=sys.stderr)
-                disk.failed = True
-                break
-            except subprocess.CalledProcessError:
-                print("Commit failed for disk '{}'".format(disk.target).ljust(65))
-                disk.failed = True
+                    return
+                except subprocess.CalledProcessError:
+                    print("Commit failed for disk '{}'{}".format(disk.target,
+                        ", retrying..." if commit_try != 2 else "").ljust(65), file=sys.stderr)
+                    disk.failed = True
+                    time.sleep(5)
 
     def __enter__(self):
         return self

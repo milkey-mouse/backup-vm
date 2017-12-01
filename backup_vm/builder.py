@@ -25,10 +25,14 @@ class ArchiveBuilder(tempfile.TemporaryDirectory):
     def __enter__(self):
         for disk in self.disks:
             realpath = os.path.realpath(disk.path)
-            with open(realpath) as f:
-                # add size of disk to total
-                f.seek(0, os.SEEK_END)
-                self.total_size += f.tell()
+            if self.total_size is not None:
+                try:
+                    with open(realpath) as f:
+                        # add size of disk to total
+                        f.seek(0, os.SEEK_END)
+                        self.total_size += f.tell()
+                except (PermissionError, OSError):
+                    self.total_size = None
             linkpath = disk.target + "." + disk.format
             with open(linkpath, "w") as f:
                 # simulate 'touch'

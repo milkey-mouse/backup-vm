@@ -37,12 +37,10 @@ def main():
         sys.exit(1)
 
     for disk in all_disks:
-        disk.failed = False
+        filename = args.domain + "-" + disk.target + "-tempsnap.qcow2"
         if disk not in disks_to_backup:
             disk.snapshot_path = None
-            continue
-        filename = args.domain + "-" + disk.target + "-tempsnap.qcow2"
-        if disk.type == "dev":
+        elif disk.type == "dev":
             # we probably can't write the temporary snapshot to the same directory
             # as the original disk, so use the default libvirt images directory
             disk.snapshot_path = os.path.join("/var/lib/libvirt/images", filename)
@@ -59,7 +57,6 @@ def main():
             borg_failed = multi.assimilate(args.archives, archive_dir.total_size)
         else:
             borg_failed = multi.assimilate(args.archives)
-        pass
 
     # bug in libvirt python wrapper(?): sometimes it tries to delete
     # the connection object before the domain, which references it
