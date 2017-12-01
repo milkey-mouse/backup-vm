@@ -7,7 +7,9 @@ def readme():
 
 
 setup(name="backup-vm",
-      version="0.1",
+      use_scm_version={
+          "write_to": "backup_vm/_version.py",
+      },
       description="Backup libvirt VMs with borg",
       long_description=readme(),
       classifiers=[
@@ -28,6 +30,7 @@ setup(name="backup-vm",
       author_email="milkeymouse@meme.institute",
       license="MIT",
       packages=["backup_vm"],
+      setup_requires=["setuptools_scm>=1.7"],
       install_requires=[
           "libvirt-python",
       ],
