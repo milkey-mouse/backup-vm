@@ -45,15 +45,15 @@ Backup
 
 Back up a virtual machine to a single Borg repo::
 
-   ./backup-vm.py myVM myrepo::myBackup
+    backup-vm myVM myrepo::myBackup
 
 Back up a virtual machine ``webserver`` to an onsite and an offsite Borg repository with varying compression settings::
 
-   ./backup-vm.py webserver onsite::webserver-{now:%Y-%m-%d} --borg-args --compression lz4 offsite::webserver-{now:%Y-%m-%d} --borg-args --compression zlib,9
+    backup-vm webserver onsite::webserver-{now:%Y-%m-%d} --borg-args --compression lz4 offsite::webserver-{now:%Y-%m-%d} --borg-args --compression zlib,9
 
 Back up only the system drive of a Windows VM::
 
-   ./backup-vm.py win10 sda myrepo::win10-{now:%Y-%m-%d}
+    backup-vm win10 sda myrepo::win10-{now:%Y-%m-%d}
 
 Restore
 ^^^^^^^
@@ -68,7 +68,7 @@ Usage
 
 ::
 
-   usage: backup-vm.py [-hmp] domain [disk [disk ...]] archive
+   usage: backup-vm [-hmp] domain [disk [disk ...]] archive
        [--borg-args ...] [archive [--borg-args ...] ...]
 
    Back up a libvirt-based VM using borg.
