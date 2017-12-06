@@ -33,7 +33,7 @@ def main():
     disks_to_backup = args.disks and {x for x in all_disks if x.target in args.disks} or all_disks
     if len(disks_to_backup) != len(args.disks or all_disks):
         print("Some disks to be backed up don't exist on the domain:",
-              *sorted(args.disks - {x.target for x in disks}), file=sys.stderr)
+              *sorted(x.target for x in all_disks if x.target not in args.disks), file=sys.stderr)
         sys.exit(1)
 
     for disk in all_disks:
