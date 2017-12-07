@@ -159,7 +159,7 @@ class Disk:
         self.target = xml.find("target").get("dev")
         # sometimes there won't be a source entry, e.g. a cd drive without a
         # virtual cd in it
-        if len(xml.find("source").attrib.items()) >= 1:
+        if xml.find("source") is not None:
             self.type, self.path = next(iter(xml.find("source").attrib.items()))
         else:
             self.type = self.path = None
