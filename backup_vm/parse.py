@@ -348,7 +348,7 @@ class MultiArgumentParser(ArgumentParser):
             """).strip("\n"))
 
 
-class BVMArgumentParser(ArgumentParser):
+class BackupArgumentParser(ArgumentParser):
 
     """Argument parser for backup-vm.
 

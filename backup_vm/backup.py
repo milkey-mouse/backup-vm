@@ -10,7 +10,7 @@ from . import snapshot
 
 
 def main():
-    args = parse.BVMArgumentParser()
+    args = parse.BackupArgumentParser()
     conn = libvirt.open()
     if conn is None:
         print("Failed to open connection to libvirt", file=sys.stderr)
