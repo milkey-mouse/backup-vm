@@ -167,11 +167,13 @@ class Disk:
 
     def __repr__(self):
         if self.type == "file":
-            return "<" + self.path + " (device)>"
+            type = "file"
         elif self.type == "dev":
-            return "<" + self.path + " (block device)>"
+            type = "block device"
         else:
-            return "<" + self.path + " (unknown type)>"
+            type = "unknown type"
+
+        return "<{} ({}) ({} format)>".format(self.path, type, self.format)
 
     @classmethod
     def get_disks(cls, dom):
