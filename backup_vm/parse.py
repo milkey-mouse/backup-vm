@@ -156,7 +156,6 @@ class Disk:
 
     def __init__(self, xml):
         self.xml = xml
-        self.format = xml.find("driver").attrib["type"]
         self.target = xml.find("target").get("dev")
         # sometimes there won't be a source entry, e.g. a cd drive without a
         # virtual cd in it
@@ -164,6 +163,13 @@ class Disk:
             self.type, self.path = next(iter(xml.find("source").attrib.items()))
         else:
             self.type = self.path = None
+        # apparently in some cd drives created by virt-manager, <driver> can
+        # also be completely missing:
+        # https://github.com/milkey-mouse/backup-vm/issues/11#issuecomment-351478233
+        if xml.find("driver") is not None:
+            self.format = xml.find("driver").attrib["type"]
+        else:
+            self.format = "unknown"
 
     def __repr__(self):
         if self.type == "file":
