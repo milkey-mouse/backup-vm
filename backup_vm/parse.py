@@ -4,6 +4,7 @@ from textwrap import dedent
 import sys
 import os
 import re
+from . import __version__
 
 
 class Location:
@@ -211,9 +212,11 @@ class ArgumentParser(metaclass=ABCMeta):
         Returns:
             True if the argument was processed, False if it was not recognized
         """
-        # TODO: add --version
         if arg in {"-h", "--help"}:
             self.help()
+            sys.exit()
+        elif arg in {"-v", "--version"}:
+            self.version()
             sys.exit()
         l = Location.try_location(arg)
         if l is not None and l.path is not None and l.archive is not None and \
@@ -258,6 +261,9 @@ class ArgumentParser(metaclass=ABCMeta):
     @abstractmethod
     def help(self, short=False):
         pass
+
+    def version(self):
+        print(self.prog, __version__)
 
 
 class MultiArgumentParser(ArgumentParser):
@@ -311,7 +317,7 @@ class MultiArgumentParser(ArgumentParser):
 
     def help(self, short=False):
         print(dedent("""
-            usage: {} [-hp] [--path PATH] [--borg-cmd SUBCOMMAND]
+            usage: {} [-hpv] [--path PATH] [--borg-cmd SUBCOMMAND]
                 archive [--borg-args ...] [archive [--borg-args ...] ...]
         """.format(self.prog).lstrip("\n")))
         if not short:
@@ -323,6 +329,7 @@ class MultiArgumentParser(ArgumentParser):
 
             optional arguments:
               -h, --help       show this help message and exit
+              -v, --version    show version of the backup-vm package
               -l, --path       path for borg to archive (default: .)
               -p, --progress   force progress display even if stdout isn't a tty
               -c, --borg-cmd   alternate borg subcommand to run (default: create)
@@ -360,7 +367,7 @@ class BVMArgumentParser(ArgumentParser):
 
     def help(self, short=False):
         print(dedent("""
-            usage: {} [-hmp] domain [disk [disk ...]] archive
+            usage: {} [-hmpv] domain [disk [disk ...]] archive
                 [--borg-args ...] [archive [--borg-args ...] ...]
         """.format(self.prog).lstrip("\n")))
         if not short:
@@ -374,6 +381,7 @@ class BVMArgumentParser(ArgumentParser):
 
             optional arguments:
               -h, --help       show this help message and exit
+              -v, --version    show version of the backup-vm package
               -m, --memory     (experimental) snapshot the memory state as well
               -p, --progress   force progress display even if stdout isn't a tty
               --borg-args ...  extra arguments passed straight to borg
