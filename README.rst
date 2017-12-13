@@ -106,4 +106,13 @@ Installation
 
 Python ≥3.4 is required, as well as the Python libvirt bindings. If possible, install them from the system package manager (``apt install python3-libvirt``); otherwise, use pip (``pip install libvirt-python``). To install the script, copy it into ``/usr/local/bin`` and optionally remove the ``.py`` extension.
 
-For offline backups, ``qemu-img`` is required, although it is normally installed along with libvirt.
+For offline backups and some restore operations, ``qemu-img`` is required, although it is normally installed along with libvirt.
+
+If you plan to use ``restore-vm``, you should |enable virtlockd|_ to prevent accidentally starting VMs with half-restored disks::
+
+    # TL;DR for systems with systemd; see libvirt page for more info
+    sudo systemctl enable virtlockd
+    sudo systemctl start virtlockd
+
+.. |enable virtlockd| replace:: enable ``virtlockd``
+.. _enable virtlockd: https://libvirt.org/locking-lockd.html
