@@ -162,8 +162,11 @@ class Snapshot:
                     disk.failed = True
                     return
                 except subprocess.CalledProcessError:
-                    print("Commit failed for disk '{}'{}".format(disk.target,
-                        ", retrying..." if commit_try != 2 else "").ljust(65), file=sys.stderr)
+                    if commit_try == 2:
+                        failed_str = "Commit failed for disk '{}', retrying..."
+                    else:
+                        failed_str = "Commit failed for disk '{}'"
+                    print(failed_str.format(disk.target).ljust(65), file=sys.stderr)
                     disk.failed = True
                     time.sleep(5)
 
