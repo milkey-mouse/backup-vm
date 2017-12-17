@@ -21,7 +21,7 @@ def main():
         print("Domain '{}' not found".format(args.domain))
         sys.exit(1)
 
-    all_disks = set(parse.Disk.get_disks(dom))
+    all_disks = set(parse.Disk.from_domain(dom))
     if len(all_disks) == 0:
         print("Domain has no disks(!)", file=sys.stderr)
         sys.exit(1)

@@ -147,29 +147,19 @@ class Disk:
     """Holds information about a single disk on a libvirt domain.
 
     Attributes:
-        xml: The original XML element representing the disk.
+        xml: The original XML element representing the disk. Only exists if the
+            object was created from a libvirt domain.
         format: The format of the disk image (qcow2, raw, etc.)
         target: The block device name on the guest (sda, xvdb, etc.)
         type: The type of storage backing the disk (file, block, etc.)
         path: The location of the disk storage (image file, block device, etc.)
     """
 
-    def __init__(self, xml):
-        self.xml = xml
-        self.target = xml.find("target").get("dev")
-        # sometimes there won't be a source entry, e.g. a cd drive without a
-        # virtual cd in it
-        if xml.find("source") is not None:
-            self.type, self.path = next(iter(xml.find("source").attrib.items()))
-        else:
-            self.type = self.path = None
-        # apparently in some cd drives created by virt-manager, <driver> can
-        # also be completely missing:
-        # https://github.com/milkey-mouse/backup-vm/issues/11#issuecomment-351478233
-        if xml.find("driver") is not None:
-            self.format = xml.find("driver").attrib["type"]
-        else:
-            self.format = "unknown"
+    def __init__(self, format=None, target=None, type=None, path=None):
+        self.format = format
+        self.target = target
+        self.type = type
+        self.path = path
 
     def __repr__(self):
         if self.type == "file":
@@ -181,8 +171,18 @@ class Disk:
 
         return "<{} ({}) ({} format)>".format(self.path, type, self.format)
 
+    def __hash__(self):
+        return hash((self.format, self.target, self.type, self.path))
+
+    def __eq__(self, other):
+        return isinstance(other, Disk) and \
+            self.format == other.format and \
+            self.target == other.format and \
+            self.type == other.type and \
+            self.path == other.path
+
     @classmethod
-    def get_disks(cls, dom):
+    def from_domain(cls, dom):
         """Generates a list of Disks representing the disks on a libvirt domain.
 
         Args:
@@ -192,7 +192,19 @@ class Disk:
             Disk objects representing each disk on the domain.
         """
         tree = ElementTree.fromstring(dom.XMLDesc(0))
-        yield from {d for d in map(cls, tree.findall("devices/disk")) if d.type is not None}
+        yield from {d for d in map(cls.from_xml, tree.findall("devices/disk")) if d.type is not None}
+
+    @classmethod
+    def from_xml(cls, xml):
+        disk = cls(
+            format=xml.find("driver").attrib["type"],
+            target=xml.find("target").get("dev")
+        )
+        # sometimes there is no source entry, like when a CD drive has no CD
+        if xml.find("source") is not None:
+            disk.type, disk.path = next(iter(xml.find("source").attrib.items()))
+        disk.xml = xml
+        return disk
 
 
 # TODO: reimplement this mess with getopt (argparse doesn't support --borg-args stuff)
