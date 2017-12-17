@@ -15,10 +15,6 @@ Features
 
     * Chances of file corruption are still low with a `guest agent`_ installed
 
-  * Can back up RAM contents *(Experimental)*
-
-    * Restoring from RAM acts like normal PC hibernation
-
 * Can back up multiple VM disks
 
   * Supports disk images backed by a file or a block device
@@ -80,7 +76,6 @@ Usage
 
    optional arguments:
    -h, --help       show this help message and exit
-   -m, --memory     (experimental) snapshot the memory state as well
    -p, --progress   force progress display even if stdout isn't a tty
    --borg-args ...  extra arguments passed straight to borg
 

@@ -350,19 +350,16 @@ class BVMArgumentParser(ArgumentParser):
     """Argument parser for backup-vm.
 
     Parses common arguments (--borg-args, multiple archive locations, etc.) as
-    well as those of backup-vm (domain, memory).
+    well as those of backup-vm (domain).
     """
 
     def __init__(self, default_name="backup-vm", args=sys.argv):
         self.domain = None
-        self.memory = False
         super().__init__(default_name, args)
 
     def parse_arg(self, arg):
         if not super().parse_arg(arg):
-            if arg in {"-m", "--memory"}:
-                self.memory = True
-            elif self.domain is None:
+            if self.domain is None:
                 self.domain = arg
             else:
                 self.disks.add(arg)
@@ -375,7 +372,7 @@ class BVMArgumentParser(ArgumentParser):
 
     def help(self, short=False):
         print(dedent("""
-            usage: {} [-hmpv] domain [disk [disk ...]] archive
+            usage: {} [-hpv] domain [disk [disk ...]] archive
                 [--borg-args ...] [archive [--borg-args ...] ...]
         """.format(self.prog).lstrip("\n")))
         if not short:
@@ -390,7 +387,6 @@ class BVMArgumentParser(ArgumentParser):
             optional arguments:
               -h, --help       show this help message and exit
               -v, --version    show version of the backup-vm package
-              -m, --memory     (experimental) snapshot the memory state as well
               -p, --progress   force progress display even if stdout isn't a tty
               --borg-args ...  extra arguments passed straight to borg
             """).strip("\n"))

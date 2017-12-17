@@ -21,10 +21,6 @@ def main():
         print("Domain '{}' not found".format(args.domain))
         sys.exit(1)
 
-    if args.memory and not dom.isActive():
-        print("Domain is shut off, cannot save memory contents", file=sys.stderr)
-        args.memory = False
-
     all_disks = set(parse.Disk.get_disks(dom))
     if len(all_disks) == 0:
         print("Domain has no disks(!)", file=sys.stderr)
@@ -50,8 +46,7 @@ def main():
     for archive in args.archives:
         archive.extra_args.append("--read-special")
 
-    memory = os.path.join(tmpdir, "memory.bin") if args.memory else None
-    with snapshot.Snapshot(dom, all_disks, memory, args.progress), \
+    with snapshot.Snapshot(dom, all_disks, args.progress), \
             builder.ArchiveBuilder(disks_to_backup) as archive_dir:
         if args.progress:
             borg_failed = multi.assimilate(args.archives, archive_dir.total_size)

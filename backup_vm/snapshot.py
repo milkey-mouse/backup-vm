@@ -17,21 +17,17 @@ libvirt.registerErrorHandler(error_handler, None)
 
 class Snapshot:
 
-    def __init__(self, dom, disks, memory=None, progress=True):
+    def __init__(self, dom, disks, progress=True):
         self.dom = dom
         self.disks = disks
-        self.memory = memory
         self.progress = progress
         self.snapshotted = False
         self._do_snapshot()
 
     def _do_snapshot(self):
         snapshot_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA \
-            | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
-        if self.memory is None:
-            snapshot_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
-        else:
-            snapshot_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_LIVE
+            | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC \
+            | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
         libvirt.ignored_errors = [
             libvirt.VIR_ERR_OPERATION_INVALID,
             libvirt.VIR_ERR_ARGUMENT_UNSUPPORTED
@@ -60,11 +56,7 @@ class Snapshot:
         desc_xml = ElementTree.SubElement(root_xml, "description")
         desc_xml.text = "Temporary snapshot used while backing up " + self.dom.name()
         memory_xml = ElementTree.SubElement(root_xml, "memory")
-        if self.memory is not None:
-            memory_xml.attrib["snapshot"] = "external"
-            memory_xml.attrib["file"] = self.memory
-        else:
-            memory_xml.attrib["snapshot"] = "no"
+        memory_xml.attrib["snapshot"] = "no"
         disks_xml = ElementTree.SubElement(root_xml, "disks")
         for disk in self.disks:
             disk_xml = ElementTree.SubElement(disks_xml, "disk")
