@@ -159,6 +159,13 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None, 
         A boolean indicating if any borg processes failed (True = failed).
     """
 
+    if verb == "create":
+        progress_verb = "backup"
+    elif verb == "extract":
+        progress_verb = "restore"
+    else:
+        progress_verb = verb
+
     if dir_to_archive is None:
         dir_to_archive = []
     else:
@@ -206,10 +213,10 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None, 
                 sel.register(proc.stdout, selectors.EVENT_READ, data=proc)
 
             if progress:
-                print("backup progress: 0%".ljust(25), end="\u001b[25D", flush=True)
+                print("{} progress: 0%".format(progress_verb).ljust(25), end="\u001b[25D", flush=True)
             else:
                 # give the user some feedback so the program doesn't look frozen
-                print("starting backup", flush=True)
+                print("starting {}".format(progress_verb), flush=True)
             while len(sel.get_map()) > 0:
                 for key, mask in sel.select(1):
                     for line in iter(key.fileobj.readline, ""):
@@ -222,9 +229,8 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None, 
                             borg_failed = True
                         sel.unregister(key.fileobj)
                 if progress:
-                    total_progress = sum(p.progress for p in borg_processes)
-                    print("backup progress: {}%".format(
-                        int(total_progress / len(borg_processes) * 100)).ljust(25), end="\u001b[25D")
+                    p = int(sum(p.progress for p in borg_processes) / len(borg_processes) * 100)
+                    print("{} progress: {}%".format(progress_verb, p).ljust(25), end="\u001b[25D")
             if progress:
                 print()
     finally:
