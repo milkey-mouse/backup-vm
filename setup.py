@@ -90,6 +90,7 @@ setup(name="backup-vm",
       entry_points={
           "console_scripts": [
               "backup-vm=backup_vm.backup:main",
+              "restore-vm=backup_vm.restore:main",
               "borg-multi=backup_vm.multi:main",
           ],
       },

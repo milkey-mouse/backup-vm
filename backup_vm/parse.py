@@ -405,3 +405,56 @@ class BackupArgumentParser(ArgumentParser):
               -p, --progress   force progress display even if stdout isn't a tty
               --borg-args ...  extra arguments passed straight to borg
             """).strip("\n"))
+
+
+class RestoreArgumentParser(ArgumentParser):
+
+    """Argument parser for restore-vm.
+
+    Parses only positional arguments and basic flags (--help, --progress).
+    """
+
+    def __init__(self, default_name="restore-vm", args=sys.argv):
+        self.domain = None
+        super().__init__(default_name, args)
+
+    def parse_args(self, args):
+        positional_args = []
+        for arg in args:
+            if arg in {"-h", "--help"}:
+                self.help()
+                sys.exit()
+            elif arg in {"-p", "--progress"}:
+                self.progress = True
+            elif arg in {"-v", "--version"}:
+                self.version()
+                sys.exit()
+            elif arg.startswith("-"):
+                self.error("unrecognized argument: '{}'".format(arg))
+            else:
+                positional_args.append(arg)
+        try:
+            self.domain, *disks, archive = positional_args
+            self.disks = set(disks)
+            self.archive = Location(archive)
+        except ValueError:
+            self.error("the following arguments are required: domain, archive")
+
+    def help(self, short=False):
+        print(dedent("""
+            usage: {} [-hpv] domain [disk [disk ...]] archive
+        """.format(self.prog).lstrip("\n")))
+        if not short:
+            print(dedent("""
+            Restore a libvirt-based VM from a borg backup.
+
+            positional arguments:
+              domain           libvirt domain to restore
+              disk             a domain block device to restore (default: all disks)
+              archive          a borg archive path (same format as borg create)
+
+            optional arguments:
+              -h, --help       show this help message and exit
+              -v, --version    show version of the backup-vm package
+              -p, --progress   force progress display even if stdout isn't a tty
+            """).strip("\n"))
