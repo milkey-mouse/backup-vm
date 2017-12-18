@@ -164,8 +164,8 @@ def assimilate(archives, total_size=None, dir_to_archive=".", passphrases=None, 
     else:
         dir_to_archive = [dir_to_archive]
 
-    if passphrases is None and sys.stdout.isatty():
-        passphrases = get_passphrases(archives)
+    if passphrases is None:
+        passphrases = get_passphrases(archives) if sys.stdout.isatty() else {}
 
     if get_borg_version() < LooseVersion("1.1.0"):
         # borg <1.1 doesn't support --log-json for the progress display
