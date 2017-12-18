@@ -51,8 +51,6 @@ def main():
         print("Some disks to be restored don't exist in the archive:",
               *sorted(targets_to_restore - archive_tgts), file=sys.stderr)
         sys.exit(1)
-    # TODO: warn if a disk's logical size differs from backup to target
-    # this is complicated by non-raw images like qcow2 (which are expandable)
 
     with lock.DiskLock(disks_to_restore), builder.ArchiveBuilder(disks_to_restore) as archive_dir:
         args.archive.extra_args.extend(archive_disks.keys())
