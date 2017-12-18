@@ -84,3 +84,5 @@ Installation
 ------------
 
 Python ≥3.4 is required, as well as the Python libvirt bindings. If possible, install them from the system package manager (``apt install python3-libvirt``); otherwise, use pip (``pip install libvirt-python``). To install the script, copy it into ``/usr/local/bin`` and optionally remove the ``.py`` extension.
+
+For offline backups, ``qemu-img`` is required, although it is normally installed along with libvirt.
