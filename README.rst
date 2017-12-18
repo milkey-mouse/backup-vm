@@ -54,10 +54,17 @@ Back up only the system drive of a Windows VM::
 Restore
 ^^^^^^^
 
-A script for automatic restoration is `in development`_; however, the backups are saved with a simple directory structure that makes manual restoration easy. Each backup has the image of each disk clearly named in the root directory (e.g. ``sda.raw``, ``hdb.qcow2``). The legacy `bash script`_ for restoring follows a similar process to what the Python version will, with the notable exception that it does not handle multiple disks.
+Restore a virtual machine to a previous state::
 
-.. _in development: https://github.com/milkey-mouse/backup-vm/issues/1
-.. _bash script: https://github.com/milkey-mouse/backup-vm/blob/bash-script/restore-vm.sh
+    restore-vm myVM myrepo::myBackup
+
+Restore a virtual machine ``webserver`` from an onsite Borg repository::
+
+    restore-vm webserver onsite::webserver-2017-05-15
+
+Restore only the system drive of a Windows VM::
+
+    restore-vm win10 sda myrepo::win10-2017-06-21
 
 Usage
 -----
