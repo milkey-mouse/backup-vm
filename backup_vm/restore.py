@@ -18,7 +18,11 @@ def main():
     try:
         dom = conn.lookupByName(args.domain)
     except libvirt.libvirtError:
-        print("Domain '{}' not found".format(args.domain))
+        print("Domain '{}' not found".format(args.domain), file=sys.stderr)
+        sys.exit(1)
+
+    if dom.isActive():
+        print("Domain must be shut off during restore", file=sys.stderr)
         sys.exit(1)
 
     dom_disks = set(parse.Disk.from_domain(dom))
