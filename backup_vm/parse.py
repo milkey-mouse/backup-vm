@@ -205,7 +205,10 @@ class ArgumentParser(metaclass=ABCMeta):
     """
 
     def __init__(self, default_name, args=sys.argv):
-        self.prog = os.path.basename(args[0]) if len(args) > 0 else default_name
+        try:
+            self.prog = os.path.basename(args[0])
+        except Exception:
+            self.prog = default_name
         self.progress = sys.stdout.isatty()
         self.disks = set()
         self.archives = []

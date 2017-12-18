@@ -1,4 +1,57 @@
+from pkg_resources import EntryPoint
+from setuptools import Command
 from setuptools import setup
+from itertools import chain
+import contextlib
+import sys
+import io
+
+
+class build_usage(Command):
+    description = "update usage section in README"
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        with open("README.rst", "r+") as f:
+            lines = [*self.format_readme(f)]
+            f.seek(0)
+            f.writelines(lines)
+            f.truncate()
+
+    def format_readme(self, lines):
+        skipping = False
+        for line in lines:
+            if line == ".. END AUTO-GENERATED USAGE\n":
+                skipping = False
+            if not skipping:
+                yield line
+            if line == ".. BEGIN AUTO-GENERATED USAGE\n":
+                yield from self.generate_usage()
+                skipping = True
+
+
+    def generate_usage(self):
+        old_argv = sys.argv
+        scripts = self.distribution.entry_points["console_scripts"]
+        for pkg in self.distribution.packages:
+            for ep in EntryPoint.parse_group(pkg, scripts).values():
+                rs = io.StringIO()
+                sys.argv = [None, "--help"]
+                with contextlib.redirect_stdout(rs), contextlib.suppress(SystemExit):
+                    ep.resolve()()
+                rs.seek(0)
+                yield "::\n\n"
+                for line in rs.readlines():
+                    yield ("    " if line != "\n" else "") + line
+                yield "\n"
+        sys.argv = old_argv
+        yield from []
 
 
 def readme():
@@ -40,5 +93,6 @@ setup(name="backup-vm",
               "borg-multi=backup_vm.multi:main",
           ],
       },
+      cmdclass={"build_usage": build_usage},
       include_package_data=True,
       zip_safe=False)

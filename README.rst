@@ -62,23 +62,44 @@ A script for automatic restoration is `in development`_; however, the backups ar
 Usage
 -----
 
+.. BEGIN AUTO-GENERATED USAGE
 ::
 
-   usage: backup-vm [-hmp] domain [disk [disk ...]] archive
-       [--borg-args ...] [archive [--borg-args ...] ...]
+    usage: backup-vm [-hpv] domain [disk [disk ...]] archive
+        [--borg-args ...] [archive [--borg-args ...] ...]
 
-   Back up a libvirt-based VM using borg.
+    Back up a libvirt-based VM using borg.
 
-   positional arguments:
-   domain           libvirt domain to back up
-   disk             a domain block device to back up (default: all disks)
-   archive          a borg archive path (same format as borg create)
+    positional arguments:
+      domain           libvirt domain to back up
+      disk             a domain block device to back up (default: all disks)
+      archive          a borg archive path (same format as borg create)
 
-   optional arguments:
-   -h, --help       show this help message and exit
-   -p, --progress   force progress display even if stdout isn't a tty
-   --borg-args ...  extra arguments passed straight to borg
+    optional arguments:
+      -h, --help       show this help message and exit
+      -v, --version    show version of the backup-vm package
+      -p, --progress   force progress display even if stdout isn't a tty
+      --borg-args ...  extra arguments passed straight to borg
 
+::
+
+    usage: borg-multi [-hpv] [--path PATH] [--borg-cmd SUBCOMMAND]
+        archive [--borg-args ...] [archive [--borg-args ...] ...]
+
+    Batch multiple borg commands into one.
+
+    positional arguments:
+      archive          a borg archive path (same format as borg create)
+
+    optional arguments:
+      -h, --help       show this help message and exit
+      -v, --version    show version of the backup-vm package
+      -l, --path       path for borg to archive (default: .)
+      -p, --progress   force progress display even if stdout isn't a tty
+      -c, --borg-cmd   alternate borg subcommand to run (default: create)
+      --borg-args ...  extra arguments passed straight to borg
+
+.. END AUTO-GENERATED USAGE
 
 Installation
 ------------
