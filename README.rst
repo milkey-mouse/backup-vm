@@ -90,6 +90,22 @@ Usage
 
 ::
 
+    usage: restore-vm [-hpv] domain [disk [disk ...]] archive
+
+    Restore a libvirt-based VM from a borg backup.
+
+    positional arguments:
+      domain           libvirt domain to restore
+      disk             a domain block device to restore (default: all disks)
+      archive          a borg archive path (same format as borg create)
+
+    optional arguments:
+      -h, --help       show this help message and exit
+      -v, --version    show version of the backup-vm package
+      -p, --progress   force progress display even if stdout isn't a tty
+
+::
+
     usage: borg-multi [-hpv] [--path PATH] [--borg-cmd SUBCOMMAND]
         archive [--borg-args ...] [archive [--borg-args ...] ...]
 
