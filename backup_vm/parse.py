@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from xml.etree import ElementTree
 from textwrap import dedent
+import itertools
 import sys
 import os
 import re
@@ -214,7 +215,7 @@ class ArgumentParser(metaclass=ABCMeta):
         self.archives = []
         self.parse_args(args[1:])
 
-    def parse_arg(self, arg):
+    def parse_arg(self, arg, needs_archive=True, lookahead=None):
         """Parses a single argument.
 
         Args:
@@ -226,12 +227,12 @@ class ArgumentParser(metaclass=ABCMeta):
         if arg in {"-h", "--help"}:
             self.help()
             sys.exit()
-        elif arg in {"-v", "--version"}:
+        elif arg in {"-v", "--version"} and not self.parsing_borg_args:
             self.version()
             sys.exit()
         l = Location.try_location(arg)
-        if l is not None and l.path is not None and l.archive is not None and \
-                (l.proto == "file" or l._host is not None):
+        if needs_archive and l is not None and l.path is not None and \
+                (l.proto == "file" or l._host is not None) and l.archive is not None:
             self.parsing_borg_args = False
             l.canonicalize_path()
             self.archives.append(l)
@@ -240,6 +241,11 @@ class ArgumentParser(metaclass=ABCMeta):
                 self.error("--borg-args must come after an archive path")
             else:
                 self.parsing_borg_args = True
+        elif not needs_archive and lookahead is not None and lookahead == "--borg-args" and \
+                l is not None and l.path is not None and (l.proto == "file" or l._host is not None):
+            self.parsing_borg_args = False
+            l.canonicalize_path()
+            self.archives.append(l)
         elif self.parsing_borg_args:
             self.archives[-1].extra_args.append(arg)
         elif arg in {"-p", "--progress"}:
@@ -253,13 +259,13 @@ class ArgumentParser(metaclass=ABCMeta):
             self.help()
             sys.exit(2)
         self.parsing_borg_args = False
-        for arg in args:
-            if arg.startswith("-") and not arg.startswith("--"):
+        for arg, lookahead in itertools.zip_longest(args, args[1:]):
+            if arg.startswith("-") and not arg.startswith("--") and "=" not in arg:
                 for c in arg[1:]:
-                    if not self.parse_arg("-" + c):
+                    if not self.parse_arg("-" + c, lookahead=lookahead):
                         self.error("unrecognized argument: '-{}'".format(c))
             else:
-                if not self.parse_arg(arg):
+                if not self.parse_arg(arg, lookahead=lookahead):
                     self.error("unrecognized argument: '{}'".format(arg))
         if len(self.archives) == 0:
             self.error("at least one archive path is required")
@@ -282,7 +288,7 @@ class MultiArgumentParser(ArgumentParser):
     """Argument parser for borg-multi.
 
     Parses common arguments (--borg-args, multiple archive locations, etc.) as
-    well as those of borg-multi (--borg-cmd).
+    well as those of borg-multi (--borg-cmd, --path).
     """
 
     def __init__(self, default_name="borg-multi", args=sys.argv):
@@ -290,13 +296,11 @@ class MultiArgumentParser(ArgumentParser):
         self.dir = "."
         super().__init__(default_name, args)
 
-    def parse_arg(self, arg):
+    def parse_arg(self, arg, *args, **kwargs):
         if self.command is None:
             self.command = arg
         elif self.dir is None:
             self.dir = arg
-        elif super().parse_arg(arg):
-            return True
         elif arg in {"-c", "--borg-cmd"}:
             self.command = None
         elif arg.startswith("-c"):
@@ -315,6 +319,8 @@ class MultiArgumentParser(ArgumentParser):
                 self.dir = arg.split("=")[1]
             except IndexError:
                 self.dir = None
+        elif super().parse_arg(arg, needs_archive=False, *args, **kwargs):
+            return True
         else:
             return False
         return True
@@ -360,8 +366,8 @@ class BVMArgumentParser(ArgumentParser):
         self.domain = None
         super().__init__(default_name, args)
 
-    def parse_arg(self, arg):
-        if not super().parse_arg(arg):
+    def parse_arg(self, arg, *args, **kwargs):
+        if not super().parse_arg(arg, *args, **kwargs):
             if self.domain is None:
                 self.domain = arg
             else:
