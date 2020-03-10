@@ -168,7 +168,7 @@ class Disk:
         # also be completely missing:
         # https://github.com/milkey-mouse/backup-vm/issues/11#issuecomment-351478233
         if xml.find("driver") is not None:
-            self.format = xml.find("driver").attrib["type"]
+            self.format = xml.find("driver").attrib.get("type", "unknown")
         else:
             self.format = "unknown"
 
