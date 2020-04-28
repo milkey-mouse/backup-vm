@@ -19,7 +19,7 @@ class build_usage(Command):
 
     def run(self):
         with open("README.rst", "r+") as f:
-            lines = [*self.format_readme(f)]
+            lines = list(self.format_readme(f))
             f.seek(0)
             f.writelines(lines)
             f.truncate()
