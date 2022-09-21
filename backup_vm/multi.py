@@ -95,7 +95,9 @@ def process_line(p, line, total_size=None, prompt_answers={}):
         try:
             msg = json.loads("\n".join(p.json_buf))
             p.json_buf = []
-            if msg["type"] == "archive_progress" and total_size is not None:
+            if msg["type"] == "archive_progress" and msg["finished"]:
+                log(p.archive.orig, str("borg finished as " + str(msg["finished"])).split("\n"))
+            elif msg["type"] == "archive_progress" and total_size is not None:
                 p.progress = msg["original_size"] / total_size
             elif msg["type"] == "log_message":
                 log(p.archive.orig, msg["message"].split("\n"))
