@@ -3,6 +3,7 @@
 import os.path
 import sys
 import subprocess
+import platform
 import libvirt
 from . import parse
 from . import multi
