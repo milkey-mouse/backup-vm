@@ -53,6 +53,10 @@ def main():
     with snapshot.Snapshot(dom, all_disks, args.progress), \
             builder.ArchiveBuilder(disks_to_backup) as archive_dir:
 
+        f = open("origin.txt", "w")
+        f.write(platform.node())
+        f.close()
+
         f = open(args.domain + ".xml", "w")
         f.write(dom_xml)
         f.close()
