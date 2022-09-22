@@ -47,11 +47,14 @@ def main():
     for archive in args.archives:
         archive.extra_args.append("--read-special")
 
+    # dump the xml before the snapshot so that we have the original disk devices
+    dom_xml = dom.XMLDesc(0)
+
     with snapshot.Snapshot(dom, all_disks, args.progress), \
             builder.ArchiveBuilder(disks_to_backup) as archive_dir:
 
         f = open(args.domain + ".xml", "w")
-        f.write(dom.XMLDesc(0))
+        f.write(dom_xml)
         f.close()
 
         for disk in all_disks:
