@@ -2,6 +2,8 @@
 
 import os.path
 import sys
+import subprocess
+import platform
 import libvirt
 from . import parse
 from . import multi
@@ -46,8 +48,27 @@ def main():
     for archive in args.archives:
         archive.extra_args.append("--read-special")
 
+    # dump the xml before the snapshot so that we have the original disk devices
+    dom_xml = dom.XMLDesc(0)
+
     with snapshot.Snapshot(dom, all_disks, args.progress), \
             builder.ArchiveBuilder(disks_to_backup) as archive_dir:
+
+        f = open("origin.txt", "w")
+        f.write(platform.node())
+        f.close()
+
+        f = open(args.domain + ".xml", "w")
+        f.write(dom_xml)
+        f.close()
+
+        for disk in all_disks:
+            if disk in disks_to_backup and disk.type == "dev":
+                lv = subprocess.check_output(["/usr/sbin/lvdisplay", disk.path], text=True)
+                f = open( (disk.path + ".lv")[1:].replace("/", "--"), "w" )
+                f.write(lv)
+                f.close()
+
         if args.progress:
             borg_failed = multi.assimilate(args.archives, archive_dir.total_size)
         else:

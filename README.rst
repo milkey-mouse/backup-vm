@@ -101,6 +101,23 @@ Usage
 
 .. END AUTO-GENERATED USAGE
 
+Building
+--------
+
+Example of how the binary is built, based on Debian Bullseye.
+
+::
+
+    git clone https://github.com/milkey-mouse/backup-vm.git
+    cd backup-vm
+    sudo apt-get install python3-pip python3-setuptools python3-libvirt
+    python3 setup.py build
+    sudo python3 setup.py install
+
+::
+
+The binary ``backup-vm`` will now exist in ``/usr/local/bin/``.
+
 Installation
 ------------
 
